@@ -320,6 +320,7 @@ export class KarpenterAddOn extends HelmAddOn {
     }
 
     @utils.conflictsWith('ClusterAutoScalerAddOn')
+    @utils.dependable('EksPodIdentityAgent')
     deploy(clusterInfo: ClusterInfo): Promise<Construct> {
         assert(clusterInfo.cluster instanceof Cluster, "KarpenterAddOn cannot be used with imported clusters as it requires changes to the cluster authentication.");
         const cluster : Cluster = clusterInfo.cluster;
@@ -377,7 +378,7 @@ export class KarpenterAddOn extends HelmAddOn {
 
         // Version feature checks for errors
         this.versionFeatureChecksForError(clusterInfo, version, disruption, consol, ttlSecondsAfterEmpty, ttlSecondsUntilExpired,
-            this.options.ec2NodeClassSpec, amiFamily);
+            this.options.ec2NodeClassSpec, amiFamily, podIdentity);
 
         // Set up the node role and instance profile
         const [karpenterNodeRole, karpenterInstanceProfile] = this.setUpNodeRole(cluster, stackName, region);
@@ -699,7 +700,7 @@ export class KarpenterAddOn extends HelmAddOn {
      * @returns
      */
     private versionFeatureChecksForError(clusterInfo: ClusterInfo, version: string, disruption: any, consolidation: any, ttlSecondsAfterEmpty: any, ttlSecondsUntilExpired: any,
-        ec2NodeClassSpec: any, amiFamily: any): void {
+        ec2NodeClassSpec: any, amiFamily: any, podIdentity:boolean): void {
 
         // EC2 Detailed Monitoring is only available in versions 0.23.0 and above
         if (semver.lt(version, '0.23.0') && ec2NodeClassSpec){
@@ -711,6 +712,7 @@ export class KarpenterAddOn extends HelmAddOn {
             if (disruption){
                 assert(!disruption["budgets"], "You cannot set disruption budgets for this version of Karpenter. Please upgrade to 0.34.0 or higher.");
             }
+            assert(!podIdentity, "You cannot use Pod Identity for this version of Karpenter. Please upgrade to version 0.34.0 or higher")
         }
 
         // version check errors for v0.32.0 and up (beta CRDs)
