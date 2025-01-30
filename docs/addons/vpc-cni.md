@@ -29,6 +29,7 @@ const app = new cdk.App();
 const addOn = new blueprints.addons.VpcCniAddOn();
 
 const blueprint = blueprints.EksBlueprint.builder()
+  .version("auto")
   .addOns(addOn)
   .build(app, 'my-stack-name');
 ```
@@ -58,6 +59,7 @@ const addOn = new blueprints.addons.VpcCniAddOn({
 });
 
 const blueprint = blueprints.EksBlueprint.builder()
+  .version("auto")
   .addOns(addOn)
   .resourceProvider(blueprints.GlobalResources.Vpc, new VpcProvider(undefined,"100.64.0.0/24",["100.64.0.0/25","100.64.0.128/26","100.64.0.192/26"],))
   .build(app, 'my-stack-name');
@@ -89,6 +91,7 @@ const addOn = new blueprints.addons.VpcCniAddOn({
 });
 
 const blueprint = blueprints.EksBlueprint.builder()
+  .version("auto")
   .addOns(addOn)
   .resourceProvider(blueprints.GlobalResources.Vpc, new VpcProvider(yourVpcId))
   .resourceProvider("secondary-cidr-subnet-0", new LookupSubnetProvider(subnet1Id)
@@ -124,7 +127,7 @@ const nodeRole = new blueprints.CreateRoleProvider("blueprint-node-role", new ia
   ]);
 
 const clusterProvider = new blueprints.GenericClusterProvider({
-  version: KubernetesVersion.V1_25,
+  version: KubernetesVersion.V1_29,
   managedNodeGroups: [
     {
       id: "mng1",
@@ -141,7 +144,7 @@ blueprints.EksBlueprint.builder()
     .build(scope, "blueprint", props);
 ```
 
-## Configuration Options
+## Configuration Options 
 
    - `version`: Pass in the optional vpc-cni plugin version compatible with kubernetes-cluster version as shown below
 ```bash
@@ -177,6 +180,20 @@ False
 v1.0.0-eksbuild.preview
 False
 ```  
+   - enableNetworkPolicy - set to `true` enables Kubernetes Network policy. This setting is introduced on `1.14.0` or latter.
+
+For example:
+```typescript
+new blueprints.addons.VpcCniAddOn({ enableNetworkPolicy: true, version: 'v1.15.0-eksbuild.2' }) 
+
+```  
+   - enableWindowsIpam - set to `true` enables Windows support for EKS cluster. 
+
+For example:
+```typescript
+new blueprints.addons.VpcCniAddOn({ enableWindowsIpam: true, version: 'v1.15.0-eksbuild.2' }) 
+``` 
+
 # Validation
 To validate that vpc-cni add-on is running, ensure that the pod is in Running state.
 
@@ -212,3 +229,4 @@ Please check our [Amazon EKS Best Practices Guide for Networking](https://aws.gi
 - Reference [VpcCniAddon](https://aws-quickstart.github.io/cdk-eks-blueprints/api/classes/addons.VpcCniAddOn.html) to learn more about this addon
 - Reference [Amazon EKS Best Practices Guide for Networking](https://aws.github.io/aws-eks-best-practices/networking/index/) to learn about Amazon EKS networking best practices
 - Reference [Custom Networking Tutorial](https://docs.aws.amazon.com/eks/latest/userguide/cni-custom-network.html) to learn how custome networking is manually setup on your Amazon EKS cluster.
+- Reference [Configure your cluster for Kubernetes network policies](https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy.html) to learn about how to enable and use kubernetes Network policies

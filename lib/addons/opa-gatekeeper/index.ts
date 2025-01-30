@@ -1,4 +1,5 @@
 import { ClusterInfo, ClusterPostDeploy, Team } from "../../spi";
+import { supportsALL } from "../../utils";
 import { HelmAddOn, HelmAddOnProps, HelmAddOnUserProps } from "../helm-addon";
 
 /**
@@ -19,9 +20,10 @@ const defaultProps: HelmAddOnProps = {
     namespace: 'gatekeeper-system',
     chart: 'gatekeeper',
     repository: "https://open-policy-agent.github.io/gatekeeper/charts",
-    version: '3.12.0'
+    version: '3.17.1'
 };
 
+@supportsALL
 export class OpaGatekeeperAddOn extends HelmAddOn implements ClusterPostDeploy {
 
     private options: OpaGatekeeperAddOnProps;

@@ -13,10 +13,10 @@ import { EfsCsiDriverAddOn } from "../efs-csi-driver";
 
 import { ClusterInfo } from '../../spi/types';
 import { Values } from "../../spi";
-import { setPath, createNamespace, createServiceAccount } from "../../utils";
+import { setPath, createNamespace, createServiceAccount, supportsX86 } from "../../utils";
 import { IFileSystem } from "aws-cdk-lib/aws-efs";
 
-import merge from "ts-deepmerge";
+import { merge } from "ts-deepmerge";
 
 /**
  * User provided options for the Helm Chart
@@ -74,7 +74,7 @@ const AIRFLOWPVC = 'efs-apache-airflow-pvc';
     name: AIRFLOW,
     namespace: AIRFLOW,
     chart: AIRFLOW,
-    version: "1.10.0",
+    version: "1.15.0",
     release: RELEASE,
     repository:  "https://airflow.apache.org",
     enableAlb: false,
@@ -87,6 +87,7 @@ const AIRFLOWPVC = 'efs-apache-airflow-pvc';
  * This add-on is currently not supported. It will apply the latest falco helm chart but the latest AMI does not have stock driver supported and
  * driver build in the init fails atm. 
  */
+@supportsX86
 export class ApacheAirflowAddOn extends HelmAddOn {
 
     readonly options: AirflowAddOnProps;
@@ -95,7 +96,7 @@ export class ApacheAirflowAddOn extends HelmAddOn {
         super({...defaultProps  as any, ...props});
         this.options = this.props as AirflowAddOnProps;
     }
-
+    
     deploy(clusterInfo: ClusterInfo): Promise<Construct> {
         const cluster = clusterInfo.cluster;
         const albAddOnCheck = clusterInfo.getScheduledAddOn(AwsLoadBalancerControllerAddOn.name);
@@ -203,7 +204,7 @@ function setUpLoadBalancer(clusterInfo: ClusterInfo, values: Values, albAddOnChe
 /**
  * Helper function to set up Logging with S3 Bucket
 */
-function setUpLogging(clusterInfo: ClusterInfo, values: Values, ns: KubernetesManifest, namespace: string, bucket: IBucket): Values {
+function setUpLogging(clusterInfo: ClusterInfo, values: Values, ns: Construct, namespace: string, bucket: IBucket): Values {
     
     // Assert check to ensure you provide an S3 Bucket
     assert(bucket, "Please provide the name of S3 bucket for Logging.");
@@ -274,7 +275,7 @@ function setUpLogging(clusterInfo: ClusterInfo, values: Values, ns: KubernetesMa
 /**
  * 
  */
-function setUpEFS(clusterInfo: ClusterInfo, values: Values, ns: KubernetesManifest, namespace: string, efsResourceName: string): [Values, KubernetesManifest] {
+function setUpEFS(clusterInfo: ClusterInfo, values: Values, ns: Construct, namespace: string, efsResourceName: string): [Values, KubernetesManifest] {
     // Check 
     const efsAddOnCheck = clusterInfo.getScheduledAddOn(EfsCsiDriverAddOn.name);
     assert(efsAddOnCheck, `Missing a dependency: ${EfsCsiDriverAddOn.name}. Please add it to your list of addons.`); 

@@ -17,6 +17,7 @@ const app = new cdk.App();
 const addOn = new blueprints.addons.MetricsServerAddOn('v0.5.0');
 
 const blueprint = blueprints.EksBlueprint.builder()
+  .version("auto")
   .addOns(addOn)
   .build(app, 'my-stack-name');
 ```
@@ -124,6 +125,6 @@ $ kubectl proxy
 
 Open the [dashboard](http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/#!/login) in your browser and login using the value for `token` above.
 
-![dashboard](https://raw.githubusercontent.com/kubernetes/dashboard/master/docs/images/dashboard-ui.png)
+![dashboard](https://github.com/kubernetes/dashboard/blob/master/docs/images/overview.png)
 
 >**Note**: It may take a few minutes before CPU and memory metrics appear in the dashboard

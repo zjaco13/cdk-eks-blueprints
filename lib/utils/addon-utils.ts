@@ -24,8 +24,8 @@ export function isOrderedAddOn(addOn: ClusterAddOn) : boolean {
  * @returns 
  */
 export function dependable(...addOns: string[]) {
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  return function (target: Object, key: string | symbol, descriptor: PropertyDescriptor) {
+  
+  return function (target: any, key: string | symbol, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
     descriptor.value = function( ...args: any[]) {
@@ -35,7 +35,10 @@ export function dependable(...addOns: string[]) {
 
       addOns.forEach( (addOn) => {
         const dep = clusterInfo.getScheduledAddOn(addOn);
-        assert(dep, `Missing a dependency for ${addOn} for ${stack}`); 
+       
+        let targetString = target?.constructor?.toString().split("\n")[0] ?? "unknown";
+
+        assert(dep, `Missing a dependency for ${addOn} for ${stack} and target ${targetString}`);
         dependencies.push(dep!);
       });
 

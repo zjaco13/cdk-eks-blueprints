@@ -37,6 +37,7 @@ const addOn = new KubeflowAddOn(
 );
 
 const blueprint = blueprints.EksBlueprint.builder()
+  .version("auto")
   .addOns(addOn)
   .build(app, 'my-stack-name');
 ```
@@ -69,7 +70,7 @@ log into Kubeflow pipeline UI by creating a port-forward to the ml-pipeline-ui s
 kubectl port-forward svc/ml-pipeline-ui 9000:80 -n =kubeflow-pipelines
 ```
 and open this browser: http://localhost:9000/#/pipelines
-more pipeline examples can be found at https://www.kubeflow.org/docs/components/pipelines/tutorials/
+more pipeline examples can be found at https://www.kubeflow.org/docs/components/pipelines/legacy-v1/tutorials/
 
 
 ## Cleanup
@@ -87,11 +88,8 @@ For more information about the Kubeflow add module, please visit [Kubeflow on EK
 
 ## License
 
-The Kubeflow CDK Blueprints AddOn is licensed under the Apache 2.0 license. [Project repository](https://github.com/season1946/eks-blueprints-cdk-kubeflow-extension/blob/main/LICENSE)
+The Kubeflow CDK Blueprints AddOn is licensed under the Apache 2.0 license.
 
 ## Disclaimer 
 This pattern relies on an open source NPM package eks-blueprints-cdk-kubeflow-ext. Please refer to the package npm site for more information.
 https://www.npmjs.com/package/eks-blueprints-cdk-kubeflow-ext
-
-If you have any question about the npm package or find any defect, please post in the source repo at 
-https://github.com/season1946/eks-blueprints-cdk-kubeflow-extension

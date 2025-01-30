@@ -1,11 +1,21 @@
-import { ISubnet } from "aws-cdk-lib/aws-ec2";
+import { ISecurityGroup, ISubnet } from "aws-cdk-lib/aws-ec2";
 import * as eks from "aws-cdk-lib/aws-eks";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from 'constructs';
 import { ClusterInfo, Values } from "../../spi";
-import { loadYaml, readYamlDocument, ReplaceServiceAccount } from "../../utils";
+import { loadYaml, readYamlDocument, ReplaceServiceAccount, supportsALL } from "../../utils";
 import { CoreAddOn, CoreAddOnProps } from "../core-addon";
 import { KubectlProvider, ManifestDeployment } from "../helm-addon/kubectl-provider";
+import { KubernetesVersion } from "aws-cdk-lib/aws-eks";
+
+const versionMap: Map<KubernetesVersion, string> = new Map([
+  [KubernetesVersion.V1_31, "v1.19.0-eksbuild.1"],
+  [KubernetesVersion.V1_30, "v1.19.0-eksbuild.1"],
+  [KubernetesVersion.V1_29, "v1.19.0-eksbuild.1"],
+  [KubernetesVersion.V1_28, "v1.19.0-eksbuild.1"],
+  [KubernetesVersion.V1_27, "v1.19.0-eksbuild.1"],
+  [KubernetesVersion.V1_26, "v1.19.0-eksbuild.1"],
+]);
 
 /**
  * User provided option for the Helm Chart
@@ -225,14 +235,14 @@ export interface VpcCniAddOnProps {
   * `MAX_ENI` Environment Variable. Format integer.
   * Specifies the maximum number of ENIs that will be attached to the node. 
   */
-  maxEni?: number;  
+  maxEni?: number;
 
   /**
   * `MINIMUM_IP_TARGET` Environment Variable. Format integer.
   * Specifies the number of total IP addresses that the ipamd 
   * daemon should attempt to allocate for pod assignment on the node.
   */
-  minimumIpTarget?: number; 
+  minimumIpTarget?: number;
 
   /**
    * `POD_SECURITY_GROUP_ENFORCING_MODE` Environment Variable. Type: String. 
@@ -276,9 +286,54 @@ export interface VpcCniAddOnProps {
   serviceAccountPolicies?: iam.IManagedPolicy[];
 
   /**
+   * Enable kubernetes network policy in the VPC CNI introduced in vpc-cni 1.14
+   * More informaton on official AWS documentation: https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy.html
+   * 
+   */
+  enableNetworkPolicy?: boolean;
+
+  /**
+   * Enable windows support for your cluster
+   * 
+   */
+  enableWindowsIpam?: boolean;
+
+  /**
+   * Enable prefix delegation for Windows nodes
+   */
+  enableWindowsPrefixDelegation?: boolean;
+
+  /**
+   * `warm-prefix-target` value in amazon-vpc-cni config map. Format integer.
+   * Specifies the number of free IPv4(/28) prefixes that the ipamd daemon
+   * should attempt to keep available for pod assignment on Windows nodes.
+   */
+  warmWindowsPrefixTarget?: number;
+
+  /**
+   * `warm-ip-target` value in amazon-vpc-cni config map. Format integer.
+   * Specifies the number of free IP addresses that the ipamd daemon
+   * should attempt to keep available for pod assignment on Windows nodes.
+   */
+  warmWindowsIPTarget?: number;
+
+  /**
+   * `minimum-ip-target` value in amazon-vpc-cni config map. Format integer.
+   * Specifies the number of total IP addresses that the ipamd
+   * daemon should attempt to allocate for pod assignment on a Windows nodes.
+   */
+  minimumWindowsIPTarget?: number;
+
+  /**
+   * `branch-eni-cooldown` value in amazon-vpc-cni config map. Format integer.
+   */
+  branchENICooldown?: number;
+
+  /**
    * Version of the add-on to use. Must match the version of the cluster where it
    * will be deployed.
    */
+
   version?: string;
 }
 
@@ -288,11 +343,16 @@ export interface CustomNetworkingConfig {
    * Secondary subnets of your VPC
    */
   readonly subnets?: ISubnet[];
+  /**
+   * Security group of secondary ENI
+   */
+  readonly securityGroup?: ISecurityGroup;
 }
 
 const defaultProps: CoreAddOnProps = {
   addOnName: 'vpc-cni',
-  version: 'v1.13.2-eksbuild.1',
+  version: 'auto',
+  versionMap: versionMap,
   saName: 'aws-node',
   namespace: 'kube-system',
   controlPlaneAddOn: false,
@@ -302,6 +362,7 @@ const defaultProps: CoreAddOnProps = {
 /**
  * Implementation of VpcCni EKS add-on with Advanced Configurations.
  */
+@supportsALL
 export class VpcCniAddOn extends CoreAddOn {
 
   readonly vpcCniAddOnProps: VpcCniAddOnProps;
@@ -315,7 +376,11 @@ export class VpcCniAddOn extends CoreAddOn {
 
   deploy(clusterInfo: ClusterInfo): Promise<Construct> {
     const cluster = clusterInfo.cluster;
-    let clusterSecurityGroupId = cluster.clusterSecurityGroupId;
+    let securityGroupId = cluster.clusterSecurityGroupId;
+
+    if (this.vpcCniAddOnProps.customNetworkingConfig?.securityGroup) {
+      securityGroupId = this.vpcCniAddOnProps.customNetworkingConfig.securityGroup.securityGroupId;
+    }
 
     if ((this.vpcCniAddOnProps.customNetworkingConfig?.subnets)) {
       for (let subnet of this.vpcCniAddOnProps.customNetworkingConfig.subnets) {
@@ -323,7 +388,7 @@ export class VpcCniAddOn extends CoreAddOn {
         const manifest = doc.split("---").map(e => loadYaml(e));
         const values: Values = {
           availabilityZone: subnet.availabilityZone,
-          clusterSecurityGroupId: clusterSecurityGroupId,
+          securityGroupId: securityGroupId,
           subnetId: subnet.subnetId
         };
         const manifestDeployment: ManifestDeployment = {
@@ -357,15 +422,29 @@ export class VpcCniAddOn extends CoreAddOn {
    * @returns 
    */
   createServiceAccount(clusterInfo: ClusterInfo, saNamespace: string, policies: iam.IManagedPolicy[]): eks.ServiceAccount {
-      const sa = new ReplaceServiceAccount(clusterInfo.cluster, `${this.coreAddOnProps.saName}-sa`, {
-        cluster: clusterInfo.cluster,
-        name: this.coreAddOnProps.saName,
-        namespace: saNamespace
-      });
+    const sa = new ReplaceServiceAccount(clusterInfo.cluster, `${this.coreAddOnProps.saName}-sa`, {
+      cluster: clusterInfo.cluster,
+      name: this.coreAddOnProps.saName,
+      namespace: saNamespace
+    });
 
-      policies.forEach(p => sa.role.addManagedPolicy(p));
-      return sa as any as eks.ServiceAccount;
+    policies.forEach(p => sa.role.addManagedPolicy(p));
+    return sa as any as eks.ServiceAccount;
   }
+}
+
+/**
+ * Iterates over all Values including nested child objects and removes undefined entries
+ */
+function RemoveUndefined(helmValues: Values): void {
+  Object.keys(helmValues).forEach(key => {
+    if (helmValues[key] === undefined) {
+      delete helmValues[key];
+    }
+    else if (typeof helmValues[key] === 'object'){
+      RemoveUndefined(helmValues[key]);
+    }
+  });
 }
 
 function populateVpcCniConfigurationValues(props?: VpcCniAddOnProps): Values {
@@ -374,50 +453,58 @@ function populateVpcCniConfigurationValues(props?: VpcCniAddOnProps): Values {
   }
 
   const result: Values = {
+    init: {
+      env: {
+        DISABLE_TCP_EARLY_DEMUX: JSON.stringify(props?.disableTcpEarlyDemux), // format: boolean, type: string
+        ENABLE_V6_EGRESS: JSON.stringify(props?.enableV6Egress), // format: boolean, type: string
+      }
+    },
     env: {
-      AWS_EC2_ENDPOINT: props?.awsEc2Endpoint,
-      ADDITIONAL_ENI_TAGS: props?.additionalEniTags,
-      ANNOTATE_POD_IP: props?.annotatePodIp,
-      AWS_EXTERNAL_SERVICE_CIDR: props?.awsExternalServiceCidrs,
-      AWS_MANAGE_ENIS_NON_SCHEDULABLE: props?.awsManageEnisNonSchedulable,
-      AWS_VPC_CNI_NODE_PORT_SUPPORT: props?.awsVpcCniNodePortSupport,
-      AWS_VPC_ENI_MTU: props?.awsVpcEniMtu,
-      AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG: props?.awsVpcK8sCniCustomNetworkCfg,
-      AWS_VPC_K8S_CNI_EXCLUDE_SNAT_CIDRS: props?.awsVpcK8sExcludeSnatCidrs,
-      ENI_CONFIG_LABEL_DEF: props?.eniConfigLabelDef,
-      ENI_CONFIG_ANNOTATION_DEF: props?.eniConfigAnnotationDef,
-      AWS_VPC_K8S_CNI_EXTERNALSNAT: props?.awsVpcK8sCniExternalSnat,
-      AWS_VPC_K8S_CNI_LOGLEVEL: props?.awsVpcK8sCniLogLevel,
-      AWS_VPC_K8S_CNI_LOG_FILE: props?.awsVpcK8sCniLogFile,
-      AWS_VPC_K8S_CNI_RANDOMIZESNAT: props?.awsVpcK8sCniRandomizeSnat,
-      AWS_VPC_K8S_CNI_VETHPREFIX: props?.awsVpcK8sCniVethPrefix,
-      AWS_VPC_K8S_PLUGIN_LOG_FILE: props?.awsVpcK8sPluginLogFile,
-      AWS_VPC_K8S_PLUGIN_LOG_LEVEL: props?.awsVpcK8sPluginLogLevel,
-      CLUSTER_ENDPOINT: props?.clusterEndpoint,
-      DISABLE_LEAKED_ENI_CLEANUP: props?.disableLeakedEniCleanup,
-      DISABLE_INTROSPECTION: props?.disableIntrospection,
-      DISABLE_METRICS: props?.disableMetrics,
-      DISABLE_NETWORK_RESOURCE_PROVISIONING: props?.disablenetworkResourceProvisioning,
-      DISABLE_TCP_EARLY_DEMUX: props?.disableTcpEarlyDemux,
-      ENABLE_BANDWIDTH_PLUGIN: props?.enableBandwidthPlugin,
-      ENABLE_NFTABLES: props?.enableNftables,
-      ENABLE_POD_ENI: props?.enablePodEni,
-      ENABLE_PREFIX_DELEGATION: props?.enablePrefixDelegation,
-      ENABLE_V6_EGRESS: props?.enableV6Egress,
-      INTROSPECTION_BIND_ADDRESS: props?.introspectionBindAddress,
-      MAX_ENI: props?.maxEni,
-      MINIMUM_IP_TARGET: props?.minimumIpTarget,
-      POD_SECURITY_GROUP_ENFORCING_MODE: props?.podSecurityGroupEnforcingMode,
-      WARM_ENI_TARGET: props?.warmEniTarget,
-      WARM_IP_TARGET: props?.warmIpTarget,
-      WARM_PREFIX_TARGET: props?.warmPrefixTarget
-    }
+      AWS_EC2_ENDPOINT: props?.awsEc2Endpoint, // type: string
+      ADDITIONAL_ENI_TAGS: props?.additionalEniTags, // type: string
+      ANNOTATE_POD_IP: JSON.stringify(props?.annotatePodIp), // format: boolean, type: string
+      AWS_EXTERNAL_SERVICE_CIDR: props?.awsExternalServiceCidrs, // type: string
+      AWS_MANAGE_ENIS_NON_SCHEDULABLE: JSON.stringify(props?.awsManageEnisNonSchedulable), // format: boolean, type: string
+      AWS_VPC_CNI_NODE_PORT_SUPPORT: JSON.stringify(props?.awsVpcCniNodePortSupport), // format: boolean, type: string
+      AWS_VPC_ENI_MTU: JSON.stringify(props?.awsVpcEniMtu), // format: integer, type: string
+      AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG: JSON.stringify(props?.awsVpcK8sCniCustomNetworkCfg), // format: boolean, type: string
+      AWS_VPC_K8S_CNI_EXCLUDE_SNAT_CIDRS: props?.awsVpcK8sExcludeSnatCidrs, // type: string
+      ENI_CONFIG_LABEL_DEF: props?.eniConfigLabelDef, // type: string
+      ENI_CONFIG_ANNOTATION_DEF: props?.eniConfigAnnotationDef, // type: string
+      AWS_VPC_K8S_CNI_EXTERNALSNAT: JSON.stringify(props?.awsVpcK8sCniExternalSnat), // format: boolean, type: string
+      AWS_VPC_K8S_CNI_LOGLEVEL: props?.awsVpcK8sCniLogLevel, // type: string
+      AWS_VPC_K8S_CNI_LOG_FILE: props?.awsVpcK8sCniLogFile, // type: string
+      AWS_VPC_K8S_CNI_RANDOMIZESNAT: props?.awsVpcK8sCniRandomizeSnat, // type: string
+      AWS_VPC_K8S_CNI_VETHPREFIX: props?.awsVpcK8sCniVethPrefix, // type: string
+      AWS_VPC_K8S_PLUGIN_LOG_FILE: props?.awsVpcK8sPluginLogFile, // type: string
+      AWS_VPC_K8S_PLUGIN_LOG_LEVEL: props?.awsVpcK8sPluginLogLevel, // type: string
+      CLUSTER_ENDPOINT: props?.clusterEndpoint, // type: string
+      DISABLE_LEAKED_ENI_CLEANUP: JSON.stringify(props?.disableLeakedEniCleanup), // format: boolean, type: string
+      DISABLE_INTROSPECTION: JSON.stringify(props?.disableIntrospection), // format: boolean, type: string
+      DISABLE_METRICS: JSON.stringify(props?.disableMetrics), // format: boolean, type: string
+      DISABLE_NETWORK_RESOURCE_PROVISIONING: JSON.stringify(props?.disablenetworkResourceProvisioning), // format: boolean, type: string
+      ENABLE_BANDWIDTH_PLUGIN: JSON.stringify(props?.enableBandwidthPlugin), // format: boolean, type: string
+      ENABLE_NFTABLES: JSON.stringify(props?.enableNftables), // format: boolean, type: string
+      ENABLE_POD_ENI: JSON.stringify(props?.enablePodEni), // format: boolean, type: string
+      ENABLE_PREFIX_DELEGATION: JSON.stringify(props?.enablePrefixDelegation), // format: boolean, type: string
+      INTROSPECTION_BIND_ADDRESS: props?.introspectionBindAddress, // type: string
+      MAX_ENI: JSON.stringify(props?.maxEni), // format: integer, type: string
+      MINIMUM_IP_TARGET: JSON.stringify(props?.minimumIpTarget), // format: integer, type: string
+      POD_SECURITY_GROUP_ENFORCING_MODE: props?.podSecurityGroupEnforcingMode, // type: string
+      WARM_ENI_TARGET: JSON.stringify(props?.warmEniTarget), // format: integer, type: string
+      WARM_IP_TARGET: JSON.stringify(props?.warmIpTarget), // format: integer, type: string
+      WARM_PREFIX_TARGET: JSON.stringify(props?.warmPrefixTarget), // format: integer, type: string
+    },
+    enableNetworkPolicy: JSON.stringify(props?.enableNetworkPolicy), // format: boolean, type: string
+    enableWindowsIpam: JSON.stringify(props?.enableWindowsIpam), // format: boolean, type: string
+    enableWindowsPrefixDelegation: JSON.stringify(props?.enableWindowsPrefixDelegation), // format: boolean, type: string
+    warmWindowsPrefixTarget: props?.warmWindowsPrefixTarget, // type: integer
+    warmWindowsIPTarget: props?.warmWindowsIPTarget, // type: integer
+    minimumWindowsIPTarget: props?.minimumWindowsIPTarget, // type: integer
+    branchENICooldown: props?.branchENICooldown, // type: integer
   };
 
-  // clean up all undefined
-  const values = result.env;
-  Object.keys(values).forEach(key => values[key] === undefined ? delete values[key] : {});
-  Object.keys(values).forEach(key => values[key] = typeof values[key] !== 'string' ?  JSON.stringify(values[key]):values[key]);
- 
+  RemoveUndefined(result);
+
   return result;
 }

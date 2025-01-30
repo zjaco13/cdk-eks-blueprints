@@ -25,6 +25,25 @@ const app = new cdk.App();
 const addOn = new blueprints.addons.XrayAdotAddOn();
 
 const blueprint = blueprints.EksBlueprint.builder()
+  .version("auto")
+  .addOns(addOn)
+  .build(app, 'my-stack-name');
+```
+
+With the same pattern, to deploy ADOT collector in non-default namespace:
+
+```typescript
+import * as cdk from 'aws-cdk-lib';
+import * as blueprints from '@aws-quickstart/eks-blueprints';
+
+const app = new cdk.App();
+
+const addOn = new blueprints.addons.XrayAdotAddOn({
+                ampPrometheusEndpoint: ampWorkspace.attrPrometheusEndpoint,
+                namespace: 'adot'
+              }),
+
+const blueprint = blueprints.EksBlueprint.builder()
   .addOns(addOn)
   .build(app, 'my-stack-name');
 ```
@@ -44,6 +63,7 @@ const addOn = new blueprints.addons.XrayAdotAddOn({
 });
 
 const blueprint = blueprints.EksBlueprint.builder()
+  .version("auto")
   .addOns(addOn)
   .build(app, 'my-stack-name');
 ```

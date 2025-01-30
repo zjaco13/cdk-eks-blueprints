@@ -7,9 +7,12 @@ import { SubnetType } from 'aws-cdk-lib/aws-ec2';
 import { CapacityType, KubernetesVersion } from 'aws-cdk-lib/aws-eks';
 import * as blueprints from '../lib';
 import { AsgClusterProvider, MngClusterProvider } from '../lib';
+import { logger } from '../lib/utils';
+import { isToken } from '../lib/utils/id-utils';
 
 const addAutoScalingGroupCapacityMock = jest.spyOn(eks.Cluster.prototype, 'addAutoScalingGroupCapacity');
 const addNodegroupCapacityMock = jest.spyOn(eks.Cluster.prototype, 'addNodegroupCapacity');
+logger.settings.minLevel = 3;
 
 test("Generic cluster provider correctly registers managed node groups", async () => {
     const app = new cdk.App();
@@ -39,9 +42,10 @@ test("Generic cluster provider correctly registers managed node groups", async (
 
     const blueprint =  await blueprints.EksBlueprint.builder()
         .account('123456789').region('us-west-1')
+        .version('auto')
         .clusterProvider(clusterProvider)
         .addOns(new blueprints.ClusterAutoScalerAddOn)
-        .buildAsync(app, 'stack-with-resource-providers');
+        .build(app, 'stack-with-resource-providers');
     
     expect(addNodegroupCapacityMock).toBeCalledWith(
         expect.any(String),
@@ -61,7 +65,8 @@ test("Generic cluster provider correctly registers managed node groups with inst
 
     const clusterProvider = blueprints.clusterBuilder()
     .withCommonOptions({
-        serviceIpv4Cidr: "10.43.0.0/16"
+        serviceIpv4Cidr: "10.43.0.0/16",
+        version: KubernetesVersion.V1_28
     })
     .managedNodeGroup({
         id: "mng1",
@@ -103,6 +108,7 @@ test("Generic cluster provider correctly registers autoscaling node groups", () 
     const app = new cdk.App();
 
     const clusterProvider = blueprints.clusterBuilder()
+    .version(KubernetesVersion.V1_28)
     .autoscalingGroup({
         id: "mng1",
         maxSize: 2,
@@ -148,6 +154,7 @@ test("Generic cluster provider correctly registers autoscaling node groups with 
     app.node.setContext("eks.default.instance-type", "m5.large");
 
     const clusterProvider = blueprints.clusterBuilder()
+    .version(eks.KubernetesVersion.V1_28)
     .autoscalingGroup({
         id: "mng1",
         maxSize: 2,
@@ -243,54 +250,54 @@ test("Asg cluster provider correctly initializes self-managed node group", () =>
     expect(blueprint.getClusterInfo().autoscalingGroups!.length).toBe(1);
 });
 
-test("Kubectl layer is correctly injected for EKS version 1.26", () => {
+test("Kubectl layer is correctly injected for EKS version 1.30", () => {
 
     const app = new cdk.App();
 
     const stack = blueprints.EksBlueprint.builder()
         .account('123456789').region('us-west-2')
-        .version(KubernetesVersion.V1_26).build(app, "stack-126");
+        .version(KubernetesVersion.V1_30).build(app, "stack-130");
     
     const template = Template.fromStack(stack);
 
     template.hasResource("AWS::Lambda::LayerVersion", {
         Properties: {
-          Description: Match.stringLikeRegexp("/opt/kubectl/kubectl 1.26"),
+          Description: Match.stringLikeRegexp("/opt/kubectl/kubectl 1.30"),
         },
       });
 });
 
 
-test("Kubectl layer is correctly injected for EKS version 1.25", () => {
+test("Kubectl layer is correctly injected for EKS version 1.29", () => {
 
     const app = new cdk.App();
 
     const stack = blueprints.EksBlueprint.builder()
       .account('123456789').region('us-west-2')
-      .version(KubernetesVersion.V1_25).build(app, "stack-125");
+      .version(KubernetesVersion.V1_29).build(app, "stack-129");
 
     const template = Template.fromStack(stack);
 
     template.hasResource("AWS::Lambda::LayerVersion", {
         Properties: {
-            Description: Match.stringLikeRegexp("/opt/kubectl/kubectl 1.25"),
+            Description: Match.stringLikeRegexp("/opt/kubectl/kubectl 1.29"),
         },
     });
 });
 
-test("Kubectl layer is correctly injected for EKS version 1.24", () => {
+test("Kubectl layer is correctly injected for EKS version 1.28", () => {
 
     const app = new cdk.App();
 
     const stack = blueprints.EksBlueprint.builder()
       .account('123456789').region('us-west-2')
-      .version(KubernetesVersion.V1_24).build(app, "stack-124");
+      .version(KubernetesVersion.V1_28).build(app, "stack-128");
 
     const template = Template.fromStack(stack);
 
     template.hasResource("AWS::Lambda::LayerVersion", {
         Properties: {
-            Description: Match.stringLikeRegexp("/opt/kubectl/kubectl 1.24"),
+            Description: Match.stringLikeRegexp("/opt/kubectl/kubectl 1.28"),
         },
     });
 });
@@ -301,8 +308,55 @@ test("Kubectl layer is correctly injected for EKS version 1.21 and below", () =>
 
     const stackV122 = blueprints.EksBlueprint.builder()
         .account('123456789').region('us-west-2')
-        .version(KubernetesVersion.V1_21).build(app, "stack-122");
+        .version(KubernetesVersion.V1_22).build(app, "stack-122");
     
     const template = Template.fromStack(stackV122);
     template.resourceCountIs("AWS::Lambda::LayerVersion", 0);
+});
+
+test("Build fails if no version is set in builder or node group", () => {
+    const app = new cdk.App();
+    const clusterProvider = new blueprints.GenericClusterProvider({
+        clusterName: "my-cluster",
+    });
+    expect(() => {
+        blueprints.EksBlueprint.builder()
+        .clusterProvider(clusterProvider).build(app, "stack-fail-2");
+    }).toThrow("Version was not specified by cluster builder or in cluster provider props, must be specified in one of these");
+});
+
+test("Kubernetes Version gets set correctly for \"auto\"", () => {
+    const app = new cdk.App();
+    const stack = blueprints.EksBlueprint.builder()
+    .account('123456789').region('us-west-2')
+    .version("auto").build(app, "stack-auto");
+
+    expect(stack.getClusterInfo().version.version).toBe(blueprints.DEFAULT_VERSION.version);
+});
+
+
+test("Kubernetes Version gets set correctly in NodeGroup", () => {
+    const app = new cdk.App();
+    const stack = blueprints.EksBlueprint.builder()
+    .account('123456789').region('us-west-2')
+    .clusterProvider(new MngClusterProvider({version: KubernetesVersion.V1_30}))
+    .build(app, "stack-auto");
+
+    expect(stack.getClusterInfo().version.version).toBe("1.30");
+});
+
+test("Import cluster provider can use output values from other stacks as params", () => {
+    const importClusterProvider = new blueprints.ImportClusterProvider({
+        clusterName: cdk.Fn.importValue('ClusterName'),
+        version: KubernetesVersion.V1_27,
+        clusterEndpoint: cdk.Fn.importValue('ClusterEndpoint'),
+        openIdConnectProvider: blueprints.getResource((context) =>
+          new blueprints.LookupOpenIdConnectProvider(
+            'classified',
+          ).provide(context),
+        ),
+        kubectlRoleArn: cdk.Fn.importValue('KubectlRoleArn'),
+        clusterSecurityGroupId: cdk.Fn.importValue('ClusterSecurityGroupId'),
+      });
+      expect(isToken(importClusterProvider.id)).toBeFalsy();
 });

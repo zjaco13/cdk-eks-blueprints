@@ -72,11 +72,11 @@ export default class MultiRegionConstruct extends cdk.Construct {
         const accountID = process.env.CDK_DEFAULT_ACCOUNT!
         const platformTeam = new team.TeamPlatform(accountID)
         const teams: Array<blueprints.Team> = [platformTeam];
+        const version = "auto";
         // AddOns for the cluster.
         const addOns: Array<blueprints.ClusterAddOn> = [
             new blueprints.addons.NginxAddOn,
             new blueprints.addons.ArgoCDAddOn,
-            new blueprints.addons.CalicoAddOn,
             new blueprints.addons.MetricsServerAddOn,
             new blueprints.addons.ClusterAutoScalerAddOn,
             new blueprints.addons.ContainerInsightsAddOn,
@@ -85,15 +85,15 @@ export default class MultiRegionConstruct extends cdk.Construct {
             new blueprints.addons.KubeProxyAddOn()
         ];
         const east = 'blueprint-us-east-2'
-        new blueprints.EksBlueprint(scope, { id: `${id}-${east}`, addOns, teams }, {
+        new blueprints.EksBlueprint(scope, { id: `${id}-${east}`, addOns, teams, version}, {
             env: { region: east }
         });
         const central = 'blueprint-us-central-2'
-        new blueprints.EksBlueprint(scope, { id: `${id}-${central}`, addOns, teams }, {
+        new blueprints.EksBlueprint(scope, { id: `${id}-${central}`, addOns, teams, version }, {
             env: { region: central }
         });
         const west = 'blueprint-us-west-2'
-        new blueprints.EksBlueprint(scope, { id: `${id}-${west}`, addOns, teams }, {
+        new blueprints.EksBlueprint(scope, { id: `${id}-${west}`, addOns, teams, version }, {
             env: { region: west }
         });
     }

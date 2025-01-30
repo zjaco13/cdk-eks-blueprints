@@ -52,6 +52,7 @@ blueprints.EksBlueprint.builder()
     }))
     .region(process.env.AWS_REGION)
     .account(process.env.AWS_ACCOUNT)
+    .version("auto")
     .build(app, 'demo-cluster');
 ```
 
@@ -81,6 +82,7 @@ blueprints.EksBlueprint.builder()
     }))
     .region(process.env.AWS_REGION)
     .account(process.env.AWS_ACCOUNT)
+    .version("auto")
     .build(app, 'demo-cluster');
 ```
 
@@ -112,7 +114,7 @@ After installing the New Relic add-on, you can validate a successful installatio
 | pixieApiKey             | string                 |          | Pixie Api Key can be obtained in New Relic's Guided Install for Kubernetes (plaintext).  Use `awsSecretName` instead for AWS Secrets Manager support and added security.                                                                                                                                                                                                                                                                                                              |
 | pixieDeployKey          | string                 |          | Pixie Deploy Key can be obtained in New Relic's Guided Install for Kubernetes -  (plaintext).  Use `awsSecretName` instead for AWS Secrets Manager support and added security.                                                                                                                                                                                                                                                                                                          |
 | namespace               | string                 |          | The namespace where New Relic components will be installed. Defaults to  `newrelic`.                                                                                                                                                                                                                                                                                                               |
-| lowDataMode             | boolean                |          | Default  `true`.  Set to  `false`  to disable  `lowDataMode` .  For more details, visit the [Reducing Data Ingest Docs](https://docs.newrelic.com/docs/kubernetes-pixie/kubernetes-integration/installation/install-kubernetes-integration-using-helm/#reducedataingest)                                                                                                                                                            |
+| lowDataMode             | boolean                |          | Default  `true`.  Set to  `false`  to disable  `lowDataMode` .  For more details, visit the [Reducing Data Ingest Docs](https://docs.newrelic.com/docs/kubernetes-pixie/kubernetes-integration/installation/reduce-ingest/)                                                                                                                                                            |
 | installInfrastructure   | boolean                |          | Default  `true` .  Set to  `false`  to disable installation of the New Relic Infrastructure Daemonset.                                                                                                                                                                                                                                                                                             |
 | installKSM              | boolean                |          | Default  `true` .  Set to  `false`  to disable installation of Kube State Metrics.  An instance of KSM is required in the cluster for the New Relic Infrastructure Daemonset to function properly.                                                                                                                                                                                                 |
 | installKubeEvents       | boolean                |          | Default  `true` .  Set to  `false`  to disable installation of the New Relic Kubernetes Events integration.                                                                                                                                                                                                                                                                                        |

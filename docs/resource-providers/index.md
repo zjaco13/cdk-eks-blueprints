@@ -182,6 +182,7 @@ blueprints.EksBlueprint.builder()
         externalDnsHostname: 'my.domain.com'
     }))
     .teams(...)
+    .version("auto")
     .build(app, 'stack-with-resource-providers');
 ```
 
@@ -204,6 +205,7 @@ blueprints.EksBlueprint.builder()
         externalDnsHostname: 'my.domain.com'
     }))
     .teams(...)
+    .version("auto")
     .build(app, 'stack-with-resource-providers');
 ```
 
@@ -219,7 +221,7 @@ Example with an anonymous resource:
 
 ```typescript
 const clusterProvider = new blueprints.GenericClusterProvider({
-    version: KubernetesVersion.V1_25,
+    version: KubernetesVersion.V1_29,
     mastersRole: blueprints.getResource(context => { // will generate a unique name for resource. designed for cases when resource is defined once and needed in a single place.
         return new iam.Role(context.scope, 'AdminRole', { assumedBy: new AccountRootPrincipal() });
     }),
@@ -231,6 +233,7 @@ const clusterProvider = new blueprints.GenericClusterProvider({
 blueprints.EksBlueprint.builder()
     .addOns(...addOns)
     .clusterProvider(clusterProvider)
+    .version("auto")
     .build(scope, blueprintID, props);
 ```
 
@@ -238,8 +241,8 @@ Example with a named resource:
 
 ```typescript
 const clusterProvider = new blueprints.GenericClusterProvider({
-    version: KubernetesVersion.V1_25,
-    mastersRole: blueprints.getNamedResource("my-role"),
+    version: KubernetesVersion.V1_29,
+    mastersRole: blueprints.getNamedResource("my-role") as iam.Role,
     managedNodeGroups: [
         ...
     ]
@@ -249,6 +252,7 @@ blueprints.EksBlueprint.builder()
     .resourceProvider("my-role", new blueprints.LookupRoleProvider("SomeExistingRole")) // enables to look up this role from ClusterInfo under "my-role" in add-ons, etc.
     .addOns(...addOns)
     .clusterProvider(clusterProvider)
+    .version("auto")
     .build(scope, blueprintID, props);
 ```
 
@@ -272,6 +276,7 @@ blueprints.EksBlueprint.builder()
     .resourceProvider("FsxLustreFileSystem" ,new MyResourceProvider())
     .addOns(...)
     .teams(...)
+    .version("auto")
     .build();
 ```
 

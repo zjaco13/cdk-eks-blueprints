@@ -1,10 +1,12 @@
 export * from './addon-utils';
+export * from './architecture-utils';
 export * from './cluster-utils';
 export * from './constraints-utils';
 export * from './context-utils';
 export * from './log-utils';
 export * from './namespace-utils';
 export * from './object-utils';
+export * from './pod-identity-utils';
 export * from './proxy-utils';
 export * from './registry-utils';
 export * from './sa-utils';
@@ -13,3 +15,4 @@ export * from './string-utils';
 export * from './usage-utils';
 export * from './vpc-utils';
 export * from './yaml-utils';
+export * from './ipv6-utils';
